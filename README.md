@@ -14,6 +14,81 @@
 
 ## 更新日志
 
+### 0.7.21.17
+
+Folia for Android 0.7.21.17
+
+本次改五处：双击反馈图标、去掉控制栏里放错位置的定位按钮、四处浮层位置可自定义、返回键修复。
+
+## 一、双击播放/暂停的反馈图标
+
+之前双击中区，反馈图标和实际动作相反。根因不在图标映射，而在状态来源：`onPause` 里有一条「程序化暂停」的分支会直接 return，不写 `setPlayerState(PAUSED)`。只要有一次暂停落到那条分支，store 就一直停在 PLAYING，下一次双击读到的就是「还在播放」，图标自然反过来。
+
+现在改为直接读两个主音频 deck 的物理暂停态（`audio[data-folia-main-audio="1"]`）：暂停时两个 deck 都 `paused`，播放时至少有一个不是。这个信号不会滞后，也不受 store 遗留值影响。
+
+## 二、去掉控制栏里的定位按钮
+
+上一版把这颗准星塞进了展开态的按钮组。它不属于控制栏，已移除；定位仍由墙上原有的那颗按钮负责，且那颗现在可以单独调位置（见下文）。
+
+## 三、四处浮层位置可自定义
+
+设置路径：主页与歌单 → Bravais 墙面 →「浮层位置」组。
+
+| 可调项 | 作用 |
+| --- | --- |
+| 左上角返回按钮 · 左右 / 上下 | 海报墙与 Lattice 共用的那颗返回 |
+| 右下角定位按钮 · 左右 / 上下 | 定位当前播放歌曲的准星 |
+| 右下角工具按钮 · 左右 / 上下 | 打开工具面板的那颗 |
+| 信息条上部分 · 左右 / 上下 | 主页信息条的标题、账户入口与页签整块 |
+
+范围 ±120px，步长 1，**默认 0 = 与之前完全一致**。组内第一行有「全部复位」，8 个滑块调乱了一键回到默认。
+
+实现上刻意避开 `transform`：返回按钮的悬停缩放与隐藏动画、定位按钮的滑入位移都写在 transform 上，用 transform 做偏移会把它们盖掉。所以返回与定位改用 `left/top`，工具按钮用负 margin（它同时还要叠加底栏抬升那个 MotionValue，覆盖掉就等于把底栏避让一起废了），只有信息条上部分用 `translate`（那一块没有别的 transform）。
+
+## 四、返回键拦截修复
+
+上一版完全没生效，根因是 `targetSdk` 已经是 36：Android 13（API 33）起系统走预测式返回，**不再调用 `Activity.onBackPressed()`**，写在里面的拦截逻辑是死代码。按下返回键时系统直接把任务退到后台，所以表现为「弹窗不关、也不弹确认，直接回桌面」。
+
+修法是挂两条通道：API 33+ 注册 `OnBackInvokedDispatcher` 回调，低版本仍由 `onBackPressed` 兜底，两者都走同一个处理函数，并加了防重入（连按不会叠出两个确认框）。
+
+JS 侧也一并改了处理顺序。原来只派发一个 Escape 事件指望弹窗自己关，但更新弹窗和退出确认框都不监听 Escape，等于没反应。现在按「离用户最近的一层」逐级关闭：
+
+1. 退出确认框开着 → 关它
+2. 更新弹窗 → 关它
+3. 设置弹窗 → 关它
+4. 命令面板 → 关它
+5. 播放列表 / 面板 → 收起
+6. 其它自绘弹窗 → 派发 Escape 兜底
+7. 都没开 → 按设置决定是否二次确认
+
+顺带给更新弹窗补上 `role="dialog"` 与 `aria-modal="true"`（此前只有设置弹窗和退出确认框有，第 6 条兜底认不出它）。
+
+## 改动文件
+
+| 文件 | 改动 |
+| --- | --- |
+| `src/utils/audiblePlayingState.ts` | 新增：按 deck 物理状态判断是否在出声 |
+| `src/components/app/playback/usePlayerDoubleTapGesture.ts` | 未改（反馈仍在动作之前发出） |
+| `src/App.tsx` | 双击反馈改用物理状态；返回键逐级关闭重写 |
+| `src/components/FloatingPlayerControls.tsx` | 移除定位按钮及相关 props |
+| `src/components/app/overlays/buildAppOverlaysModel.ts` | 移除定位按钮的传值 |
+| `src/stores/useWallChromeOffsetStore.ts` | 新增：四组浮层偏移 |
+| `src/components/wall/WallBackButton.tsx` | 支持 left/top 偏移 |
+| `src/components/wall/WallToolsButton.tsx` | 支持负 margin 偏移 |
+| `src/components/app/playing-song-locator/GridLocateButton.tsx` | 支持相对定位偏移 |
+| `src/library/suites/bravais/BravaisSeamHome.tsx` | 信息条上部分 translate |
+| `src/components/modal/settings/pages/BravaisWallGroup.tsx` | 新增「浮层位置」组（8 滑块 + 复位） |
+| `src/components/modal/AppUpdateDialog.tsx` | 补 role/aria-modal |
+| `android/.../MainActivity.java` | 注册 OnBackInvokedDispatcher 回调 |
+| `test/unit/audiblePlayingState.test.ts` | 新增 7 个用例 |
+
+单测：`npx vitest run -c vitest.config.ts test/unit/`。
+
+## 已知限制
+
+- 浮层偏移是绝对值微调，不跟随屏宽换算；换到很宽的屏幕上可能需要重新调一次。
+- 信息条上部分是整块位移，不改变内部标题与页签的相对排布。
+
 ### 0.7.21.16
 
 
