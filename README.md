@@ -3,7 +3,7 @@
 这个仓库只用来放 **APK 与更新日志**，应用内的「在线更新」就是从这里读版本号。
 
 - 安装包：见右侧 [Releases](../../releases)
-- 上游仓库：https://github.com/Timingyyds/folia-android
+- 上游仓库：[Timingyyds/folia-android](https://github.com/Timingyyds/folia-android)
 - 代码仓库：[zhaosongbing/folia-android](https://github.com/zhaosongbing/folia-android)
 - 应用内的检查地址：`https://api.github.com/repos/zhaosongbing/folia-android-releases/releases/latest`
 
