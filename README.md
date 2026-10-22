@@ -14,6 +14,87 @@
 
 ## 更新日志
 
+### 0.7.21.18
+
+Folia for Android 0.7.21.18
+
+本次修三处：双击反馈图标（第三次修正）、返回键改为先回主页、信息条下部分可调位置；同时把四颗浮层按钮的大小也做成了可自定义。
+
+## 一、双击反馈图标
+
+前两次的修改分别用了「audio 元素的 paused」和「store 的 hook 值」，都不对。这次先说明错在哪：
+
+- **读 audio 元素会反**：automix 为了无缝切歌会预热另一个 deck，那个 deck 的 `paused` 是 `false`（音量为 0，但确实在播）。「有任一 deck 在播就算在播」这个判据，会在你暂停的那一刻把状态读成「还在播放」。
+- **读 store 的 hook 值也会反**：`showGestureCue` 是个 `useCallback`，读 hook 值等于读「上一次渲染时的状态」。播放/暂停刚切换完的那一帧，它手里还是旧值。
+
+现在的做法是 `usePlaybackStore.getState().playerState === PlayerState.PLAYING`：同步读、没有闭包过期问题，也不受预热 deck 干扰。`playerState` 由 audio 的 `play` / `pause` 事件直接维护，是应用层唯一的播放语义。
+
+语义仍是「即将变成什么」：播放时双击显示暂停图标，暂停时双击显示播放图标。
+
+## 二、返回键改为先回主页
+
+上一版修好了「返回键完全没反应」，但动作是直接退到桌面。现在按层级：
+
+1. 退出确认框开着 → 关它
+2. 更新弹窗 / 设置弹窗 / 命令面板 / 播放列表面板 → 逐个关
+3. 其它自绘弹窗 → 派发 Escape
+4. **播放页 → 回主页**
+5. **bravais 墙的非根层（集合页、表单、面板）→ 退回上一层**
+6. 都没有 → 按设置决定是否二次确认后才退桌面
+
+第 5 条是直接触发缝里那颗 `‹` 返回按钮：bravais 没有把「返回」暴露成命令，那是唯一的入口，而程序触发 `click()` 不受 `visibility` 影响，缝收起时同样有效。
+
+## 三、信息条下部分可调位置
+
+新增「信息条下部分 · 左右 / 上下」两条滑块，与原来的「上部分」各自独立。主页作用于工具格（`.bravais-seam-dock`），bravais 集合页作用于底部那一排动作（`.bravais-seam-actions`）——两处用同一组值，切页面不会丢。
+
+## 四、四颗浮层按钮的大小可调
+
+设置路径：主页与歌单 → Bravais 墙面 →「浮层大小」。
+
+| 可调项 | 基准 |
+| --- | --- |
+| 左上角返回按钮 | 40px |
+| 右下角定位按钮 | 40px |
+| 右下角工具按钮 | 48px |
+| 思索按钮（触屏灯泡） | 48px |
+
+用百分比（80%–180%）而不是绝对值，因为四颗的基准不同，绝对值会让四组滑块的刻度含义不一致。组内第一行有「全部复位」。
+
+工具按钮那颗的缩放是整套的：滑轨长度、填充宽度、图标都按同一个比例走，不会出现「圆变大了但滑轨还是老长度」。思索按钮的热区也跟着按钮的新位置和尺寸重新计算——否则位置一改，按钮就挪出了自己的热区，收起后再也点不回来。
+
+左上角返回按钮的位置改成了 CSS 变量（`--wall-back-x/y/scale`）而不是内联 `left/top`，这样窄屏的媒体查询基准不会被内联值覆盖。播放页那颗返回按钮现在读同一组值，三处天然一致。
+
+## 五、设置弹窗的滑动指示线可关
+
+设置 → 通用 →「显示分组滑动指示线」，默认开。关掉后顶部分组标签下方那条跟着选中项滑的横线消失，选中态仍由文字颜色表达，不会丢状态。
+
+## 改动文件
+
+| 文件 | 改动 |
+| --- | --- |
+| `src/App.tsx` | 双击图标改同步读 playerState；返回键加播放页 / bravais 两级 |
+| `src/stores/useWallChromeOffsetStore.ts` | 新增尺寸字段与 seamDock 目标 |
+| `src/stores/useSettingsModalStore.ts` | 新增 showTabIndicator |
+| `src/components/shared/SlideActionButton.tsx` | 支持 sizePx（容器、滑轨、填充、图标等比） |
+| `src/components/wall/WallBackButton.tsx` + `.css` | 位置与大小走 CSS 变量 |
+| `src/components/app/playing-song-locator/GridLocateButton.tsx` | 支持尺寸 |
+| `src/components/wall/WallToolsButton.tsx` | 透传尺寸 |
+| `src/components/visualizer/VisualizerShell.tsx` | 返回按钮与主页共用设置 |
+| `src/components/ponder/PagePonderTouchButton.tsx` | 位置、尺寸、热区跟随 |
+| `src/components/app/dialogs/AppDialogs.tsx` | 顶部提示位置 |
+| `src/library/suites/bravais/BravaisSeamHomeTools.tsx` | 信息条下部分 |
+| `src/library/suites/bravais/BravaisSeamContent.tsx` | 集合页上部分与下部分 |
+| `src/components/modal/settings/kit/Tabs.tsx` + `PageHeader.tsx` | 指示线开关 |
+| `src/components/modal/settings/pages/{BravaisWallGroup,GeneralPage}.tsx` | 位置组扩充 + 大小组 + 指示线开关 |
+| `src/i18n/locales/{zh-CN,en,in}.ts` | 三语文案 |
+
+单测：58 passed。类型检查：0 error。
+
+## 删除
+
+`src/utils/audiblePlayingState.ts` 及其测试已删除——那是上一版用错的方案，留着会造成混淆。
+
 ### 0.7.21.17
 
 Folia for Android 0.7.21.17
