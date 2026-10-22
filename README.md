@@ -14,6 +14,93 @@
 
 ## 更新日志
 
+### 0.7.21.19
+
+Folia for Android 0.7.21.19
+
+本版七处改动：四颗浮层按钮改成可拖动摆放、播放页返回与主页真正一致、bravais 集合页信息条位置、播放时常亮、两颗按钮的显隐开关，以及双击图标的第四次修正。
+
+## 一、四颗按钮改为可拖动摆放
+
+设置路径：主页与歌单 → Bravais 墙面 →「浮层位置」→ 打开「拖动调整位置」。
+
+开启后，左上角返回、右下角定位、右下角工具、思索按钮外面各出现一个虚线框：
+
+| 操作 | 效果 |
+| --- | --- |
+| 拖框体 | 改位置 |
+| 拖右下角的小圆点 | 改大小（80%–180%） |
+
+按钮可以被拖到屏幕内任意位置，但拖不出去——靠近边缘会自动停住。下面的滑块与拖动改的是同一组值，可以先用拖动摆个大概，再用滑块微调。
+
+实现上用了覆盖层而不是给每个按钮包一层容器：这四颗按钮分散在四个组件里，定位方式各不相同（absolute、relative、flex item），包容器会改 DOM 结构，很容易把工具按钮的弹性布局或信息条的裁切弄坏。覆盖层只读位置、不改结构，关掉开关就整体消失。
+
+播放页那颗返回与主页那颗共用同一个偏移值和同一套 CSS 规则，拖任意一个，另一个跟着动。
+
+## 二、播放页返回与主页一致（此前的修正不完整）
+
+上一版给播放页那颗算了独立的 top/left/width，而主页那颗走的是 CSS 变量加媒体查询。桌面下两者差几像素看不出，窄屏下主页的基准是 14/16、播放页仍写死 20/24，于是对不齐。
+
+现在播放页那颗改用 `.folia-player-back` 规则，与墙上那颗 `.lattice-back` 完全同一套基准、同一组 CSS 变量、同一条窄屏规则。规则定义在 `WallBackButton.css` 一处，两边都读它。
+
+## 三、bravais 集合页信息条位置（此前只改了首页）
+
+上一版的位移是 inline style，只加在首页缝和集合页的 `FullSeam` 上，换到海报页、书脊就没反应；而且 inline transform 与逐帧脚本写 style 的节点重叠，有被覆盖的风险。
+
+现在改成一处 CSS 变量加一组选择器：`BravaisSeam` 把 `--seam-head-x/y`、`--seam-dock-x/y` 写在 `.bravais-seam-content` 上，`bravais.css` 里的规则对所有变体生效。上部分（标题、面包屑）和下部分（工具格、底部动作排）各一组，互不干扰。
+
+## 四、播放时保持屏幕常亮
+
+设置路径：播放页 → 播放页界面 →「播放时保持屏幕常亮」，默认关。
+
+用 Screen Wake Lock API，而不是给原生窗口加 `FLAG_KEEP_SCREEN_ON`：后者一旦设置，页面隐藏、暂停播放都不会自动失效；Wake Lock 的 sentinel 在页面切到后台时由系统释放，语义正好是「只在播放中钉住，暂停或退到后台就交还系统」。切回前台时会重新获取。
+
+系统不支持或被拒绝时（省电模式、低电量）静默失败，不影响播放。
+
+## 五、两颗按钮的显隐开关
+
+设置路径：主页与歌单 → Bravais 墙面 →「浮层大小」组末尾。
+
+| 开关 | 作用 |
+| --- | --- |
+| 显示定位按钮 | 右下角那颗定位当前播放歌曲的按钮 |
+| 显示工具按钮 | 右下角那颗打开工具面板的按钮 |
+
+关掉后按钮不再渲染，但位置与大小的设置仍然保留，重新打开时回到原处。工具面板本身还能通过命令面板和手势打开。
+
+## 六、双击反馈图标（第四次修正）
+
+你确认要的是「预告动作」语义，而这正是前三版实现的方向，所以问题在读取的信号上。前三版分别用了：
+
+- store 的 hook 值 —— 是上次渲染的快照，切换完那一帧还是旧的；
+- 页面上两个 audio deck 的 DOM —— **这一版错得最关键**：automix 为了无缝切歌会预热另一个 deck，那个 deck 的 `paused` 是 `false`（音量为 0 但确实在播），于是「有任一 deck 在播就算在播」把暂停读成了播放；
+- store 的 `getState()` 快照 —— 没有闭包问题，但仍是应用层推断，不是物理事实。
+
+这一版读 `audioRef.current`。这个 ref 只指向**当前在听的那个 deck**，预热那个根本不在它里面，所以不存在误判；ref 拿不到时才退回 store。
+
+## 七、设置弹窗的滑动指示线
+
+开关在「通用」页，名为「显示分组滑动指示线」，默认开。这一版没有改它的实现——上一版的链路（store → SettingsModal → PageHeader → Tabs）是完整的。如果你在 0.7.21.19 上发现它仍然关不掉，请确认装的是不是 0.7.21.19，并告诉我开关的确切位置，我按那个路径再查。
+
+## 改动文件
+
+| 文件 | 改动 |
+| --- | --- |
+| `src/components/wall/ChromeEditOverlay.tsx` | 新增：可拖动的虚线框与缩放手柄 |
+| `src/components/visualizer/VisualizerShell.tsx` | 返回按钮改共用 CSS 规则 |
+| `src/components/wall/WallBackButton.css` | 新增 `.folia-player-back` |
+| `src/library/suites/bravais/bravais.css` | 信息条上下部分的位置规则 |
+| `src/library/suites/bravais/BravaisSeam.tsx` | 写入信息条位置 CSS 变量 |
+| `src/services/screenWakeLock.ts` | 新增：Wake Lock 封装 |
+| `src/App.tsx` 双击 | 改读 `audioRef.current` |
+| `src/stores/useWallChromeOffsetStore.ts` | 编辑模式、两个显隐开关、位移上限 |
+| `src/stores/usePlayerChromeSettingsStore.ts` | 常亮开关 |
+| `src/library/suites/bravais/BravaisStageChrome.tsx` | 按开关渲染两颗按钮 |
+| `src/components/modal/settings/pages/{BravaisWallGroup,PlayerPage}.tsx` | 拖动开关、两个显隐开关、常亮开关 |
+| `src/i18n/locales/{zh-CN,en,in}.ts` | 三语文案 |
+
+单测：58 passed。类型检查：0 error。
+
 ### 0.7.21.18
 
 Folia for Android 0.7.21.18
