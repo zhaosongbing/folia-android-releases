@@ -14,6 +14,21 @@
 
 ## 更新日志
 
+### 0.7.21.26（测试）
+
+
+### 车机与旧版 WebView 兼容
+
+- **新增老内核构建产物**：这一版同时输出现代包和 legacy 包。legacy 包改用 `nomodule` + SystemJS 加载，并内置 core-js polyfill，覆盖到 Chrome 60 / Android 6 一档的 WebView，用来解决车机上「startup timed out. tap to reload」起不来的问题。
+- **依赖全部本地打包**：删掉 `index.html` 里指向 CDN 的 importmap，React、framer-motion、lucide-react、i18next 等由构建直接打进安装包。启动不再需要访问外网，网络受限的设备也能进。
+- **现代包补 polyfill**：给新内核也补上低版本 WebView 缺的 API，避免「能加载模块但运行时报错」。
+
+### 说明
+
+- 现代设备仍然走原来的现代包，启动路径不变。
+- 由于同时打包两份产物，APK 体积会比上一版更大。
+- 极老的内核（Chrome 67 以下）里，用到 BigInt 的个别模块仍可能报错；如果车机仍然起不来，需要进一步确认 WebView 版本。
+
 ### 0.7.21.25
 
 # Folia 0.7.21.25 更新日志
